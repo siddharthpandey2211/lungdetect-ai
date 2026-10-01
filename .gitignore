@@ -1,0 +1,26 @@
+.venv*/
+__pycache__/
+*.py[cod]
+.mplconfig/
+**/.mplconfig/
+frontend/node_modules/
+frontend/dist/
+.env
+.env.*
+!frontend/.env.example
+frontend/.env.local
+
+# Source-only public release: obtain these artifacts under their own licenses.
+/lung_cancer.csv
+/Data/lung_cancer.csv
+/Data/processed.csv
+/Data/X_train.pkl
+/Data/X_test.pkl
+/Data/y_train.pkl
+/Data/y_test.pkl
+/Data/histopathology/
+/models/*.pkl
+/models/*.pth
+/models/*.pt
+/models/*.csv
+/plots/
