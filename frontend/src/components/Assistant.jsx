@@ -13,10 +13,17 @@ const HISTOPATHOLOGY_QUESTIONS = [
   "Why might this image need manual verification?",
   "What should I ask my pathologist or doctor about this result?",
 ];
+const SCAN_QUESTIONS = [
+  "Explain this scan result in plain language.",
+  "Suggest general routines and questions to discuss with my doctor.",
+  "Could this result be affected by the image quality or wrong scan type?",
+];
 
 export default function Assistant({ assessment, patient, contextType = "risk", analysisId, persistenceError = "" }) {
   const isHistopathology = contextType === "histopathology";
-  const quickQuestions = isHistopathology ? HISTOPATHOLOGY_QUESTIONS : RISK_QUESTIONS;
+  const isScan = contextType === "mri" || contextType === "ct";
+  const modality = contextType === "mri" ? "MRI" : contextType === "ct" ? "CT" : "image";
+  const quickQuestions = isHistopathology ? HISTOPATHOLOGY_QUESTIONS : isScan ? SCAN_QUESTIONS : RISK_QUESTIONS;
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -49,9 +56,12 @@ export default function Assistant({ assessment, patient, contextType = "risk", a
         assessment,
         patient,
       });
-      setMessages((current) => [...current, { role: "assistant", content: result.reply }]);
+      const reply = typeof result.reply === "string"
+        ? result.reply
+        : JSON.stringify(result.reply ?? "The assistant returned an empty response.");
+      setMessages((current) => [...current, { role: "assistant", content: reply }]);
       try {
-        await saveChatExchange(analysisId, content, result.reply);
+        await saveChatExchange(analysisId, content, reply);
       } catch (saveError) {
         setError(`Reply received, but chat history could not be saved: ${saveError.message}`);
       }
@@ -70,16 +80,20 @@ export default function Assistant({ assessment, patient, contextType = "risk", a
   };
 
   return (
-    <section className="panel assistant" aria-label={`${isHistopathology ? "Histopathology" : "Risk assessment"} chat`}>
+    <section className="panel assistant" aria-label={`${isHistopathology ? "Histopathology" : isScan ? modality : "Risk assessment"} chat`}>
       <div className="assistant-head">
-        <h3>{isHistopathology ? "Ask about this image result" : "Ask LungDetect AI"}</h3>
+        <h3>{isHistopathology ? "Ask about this image result" : isScan ? `Ask about this ${modality} result` : "Ask LungDetect AI"}</h3>
         <p className="muted">{isHistopathology
           ? "Ask about the classifier output, manual verification, or what to discuss with a pathologist."
+          : isScan
+            ? `Ask about the ${modality} classifier output, general routines, image limitations, or what to discuss with a clinician.`
           : "Ask about this screening result, daily routines, food, medication questions, or what to discuss with a clinician."}</p>
       </div>
       <div className="chat-log" aria-live="polite">
         {!messages.length && <p className="tiny">{isHistopathology
           ? "The original image is stored in your private account. Chat uses only model-result details, not the image."
+          : isScan
+            ? `The original ${modality} image is stored in your private account. Chat uses model-result details, not the image, and cannot verify the scan itself.`
           : "Your assessment and chat are stored in your private account. Local Ollama handles chat by default; OpenAI mode sends assessment details to OpenAI."}</p>}
         {messages.map((message, index) => (
           <div className={`chat-message ${message.role}`} key={`${message.role}-${index}`}>

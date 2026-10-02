@@ -6,6 +6,11 @@ import torch.nn.functional as F
 from PIL import Image
 from torchvision import models, transforms
 
+try:
+    from .modality_validation import check_image_modality
+except ImportError:
+    from modality_validation import check_image_modality
+
 
 # ============================================================
 # PATHS
@@ -171,6 +176,23 @@ def predict_histopathology(
         # ----------------------------------------------------
 
         image = image.convert("RGB")
+        modality_check = check_image_modality(image, "histopathology")
+
+        if not modality_check["valid"]:
+            return {
+                "Model": "ResNet18 Histopathology CNN",
+                "Prediction": "Unknown / Needs Manual Verification",
+                "Class": "unknown",
+                "Model Prediction": "unknown",
+                "Confidence (%)": 0.0,
+                "Threshold (%)": CONFIDENCE_THRESHOLD,
+                "Class Probabilities (%)": {class_name: 0.0 for class_name in CLASS_NAMES},
+                "Storage Class": "unknown",
+                "Storage Status": "Image does not match the expected histopathology modality.",
+                "Unknown Reason": modality_check["reason"],
+                "Manual Verification Required": True,
+                "Device": str(DEVICE),
+            }
 
         image_tensor = image_transform(
             image

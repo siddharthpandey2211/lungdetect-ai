@@ -26,7 +26,7 @@ export async function loadAnalyses() {
 
   return data.map((analysis) => ({
     id: analysis.id,
-    type: analysis.kind === "risk" ? "risk" : "image",
+    type: analysis.kind === "risk" ? "risk" : analysis.result.Modality === "Lung MRI" ? "mri" : analysis.result.Modality === "Lung CT Scan" ? "ct" : "image",
     result: analysis.kind === "risk"
       ? analysis.result.Prediction || "Risk assessment"
       : analysis.result.Class || analysis.result.Prediction || "Histopathology analysis",

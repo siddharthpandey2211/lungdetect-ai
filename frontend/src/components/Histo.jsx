@@ -11,7 +11,7 @@ export function ImageResult({ r }) {
   const probs = get(r, "class probabilities (%)", "class probabilities") || {};
   return (
     <div className="stack fade">
-      {unknown && <div className="panel warn"><h3>Manual Verification Required</h3><p>The model confidence is below the configured threshold. This image has been placed in the unknown category for manual review.</p></div>}
+      {unknown && <div className="panel warn"><h3>Unknown image - manual verification required</h3><p>{String(get(r, "unknown reason") ?? "The model confidence is below the configured threshold. This image has been placed in the unknown category for manual review.")}</p></div>}
       <div className="panel"><small>Histopathology result</small><h2>{unknown ? NAMES.unknown : NAMES[cls] || String(get(r, "prediction"))}</h2>
         <p className="muted">Model: {String(get(r, "model") ?? "ResNet18")} - not a medical diagnosis</p>
         <div className="meta"><div><span>Confidence</span><b>{num(get(r, "confidence (%)", "confidence")).toFixed(1)}%</b></div>
@@ -20,6 +20,7 @@ export function ImageResult({ r }) {
           <div><span>Manual verification</span><b>{unknown ? "Required" : "Not required"}</b></div></div></div>
       <div className="panel"><h3>Model class scores</h3>
         {Object.entries(probs).sort((a, b) => num(b[1]) - num(a[1])).map(([k, v]) => <Bar key={k} label={`${k} - ${NAMES[k] || ""}`} value={num(v)} color={COL[k]} />)}
+        <div className="class-meanings"><b>Class meanings</b><p><strong>lung_n:</strong> normal lung tissue pattern.</p><p><strong>lung_aca:</strong> lung adenocarcinoma pattern in the training labels.</p><p><strong>lung_scc:</strong> lung squamous cell carcinoma pattern in the training labels.</p><p><strong>unknown:</strong> the top score did not meet the configured threshold and needs manual review.</p></div>
         <p className="tiny">These are uncalibrated model scores, not probabilities of having or not having cancer.</p>
         <p className="tiny">{String(get(r, "disclaimer") ?? "Educational/research prototype. Not a diagnostic tool.")}</p></div>
           {r._persistenceError && <div className="err" role="alert">Image analyzed, but saving failed: {r._persistenceError}</div>}
@@ -53,6 +54,7 @@ export default function Histo({ onDone, guard }) {
   };
   return (
     <div className="stack fade">
+      <div className="panel intro-panel"><small>Before you upload</small><h3>What is histopathology?</h3><p>Histopathology examines tissue under a microscope. In lung cancer care, a pathologist studies a biopsy to look for cellular patterns and helps establish a diagnosis. This prototype classifies a tissue image into experimental pattern classes such as normal tissue, adenocarcinoma, or squamous cell carcinoma.</p><p className="tiny">A model score is not a pathology diagnosis. Only a qualified pathologist can interpret the original tissue, staining, specimen quality, and clinical context.</p></div>
       <div className={"drop" + (drag ? " over" : "")} onClick={() => ref.current.click()}
         onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
         onDrop={(e) => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files[0]); }}>

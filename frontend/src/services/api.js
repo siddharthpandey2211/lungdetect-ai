@@ -1,5 +1,5 @@
-// All backend calls live here. Backend URL unchanged.
-const BASE = "http://127.0.0.1:5050";
+// Use the local API by default, and set VITE_API_URL for hosted builds.
+const BASE = (import.meta.env.VITE_API_URL || "http://127.0.0.1:5050").replace(/\/$/, "");
 const YES = 2, NO = 1;
 
 // !! Keys/labels below must match your Patient schema. Copy the exact keys from your old App.jsx if different.
@@ -23,13 +23,24 @@ const n = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
 export const get = (o, ...ks) => { for (const k of Object.keys(o || {})) if (ks.some((x) => n(x) === n(k))) return o[k]; };
 export const num = (v) => { const x = parseFloat(String(v ?? "").replace("%", "")); return isNaN(x) ? 0 : x; };
 
+const errorMessage = (value) => {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(errorMessage).filter(Boolean).join("; ");
+  if (value && typeof value === "object") {
+    if (typeof value.message === "string") return value.message;
+    if (typeof value.msg === "string") return value.msg;
+    return Object.values(value).map(errorMessage).filter(Boolean).join("; ");
+  }
+  return "";
+};
+
 async function post(path, body, form) {
   let r;
   try {
     r = await fetch(BASE + path, form ? { method: "POST", body } : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   } catch { throw new Error("Unable to connect to LungDetect AI backend. Please make sure the FastAPI server is running."); }
   const data = await r.json();
-  if (!r.ok) throw new Error(data.detail || "Analysis failed. Please try again.");
+  if (!r.ok) throw new Error(errorMessage(data.detail) || "Analysis failed. Please try again.");
   return data;
 }
 export const predictRisk = async (payload) => {
@@ -37,4 +48,6 @@ export const predictRisk = async (payload) => {
   return data.prediction || data;
 };
 export const predictImage = (file) => { const fd = new FormData(); fd.append("file", file); return post("/predict-image", fd, true); };
+export const predictMRI = (file) => { const fd = new FormData(); fd.append("file", file); return post("/predict-mri", fd, true).then((data) => data.result || data); };
+export const predictCT = (file) => { const fd = new FormData(); fd.append("file", file); return post("/predict-ct", fd, true).then((data) => data.result || data); };
 export const chatWithAssistant = (payload) => post("/assistant/chat", payload);

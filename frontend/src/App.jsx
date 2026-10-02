@@ -3,11 +3,13 @@ import { Icon } from "./components/ui";
 import Auth from "./components/Auth";
 import Risk from "./components/Risk";
 import Histo from "./components/Histo";
+import MRI from "./components/MRI";
+import CT from "./components/CT";
 import { Dashboard, History, About } from "./components/Pages";
 import { deleteMyData, loadAnalyses, saveAnalysis } from "./services/persistence";
 import { supabase, supabaseConfigured } from "./services/supabase";
 
-const NAV = [["dash", "Dashboard", "home"], ["risk", "Risk Assessment", "activity"], ["histo", "Histopathology", "image"], ["history", "History", "clock"], ["about", "About", "info"]];
+const NAV = [["dash", "Dashboard", "home"], ["risk", "Risk Assessment", "activity"], ["histo", "Histopathology", "image"], ["mri", "MRI Analysis", "scan"], ["ct", "CT Analysis", "scan"], ["history", "History", "clock"], ["about", "About", "info"]];
 
 function describeHistoryError(error) {
   const message = String(error?.message || "");
@@ -74,7 +76,7 @@ export default function App() {
     const row = {
       id: saved.id,
       type: entry.type,
-      result: entry.type === "image"
+      result: entry.type === "image" || entry.type === "mri" || entry.type === "ct"
         ? entry.result.Class || entry.result.Prediction
         : entry.result.Prediction,
       confidence: Number(entry.result["Confidence (%)"] || 0),
@@ -145,6 +147,8 @@ export default function App() {
         {page === "dash" && <Dashboard history={history} go={go} />}
         {page === "risk" && <><h1>Risk Assessment</h1><Risk guard={guard} onDone={addHistory} /></>}
         {page === "histo" && <><h1>Histopathology Analysis</h1><Histo guard={guard} onDone={addHistory} /></>}
+        {page === "mri" && <><h1>MRI Analysis</h1><MRI guard={guard} onDone={addHistory} /></>}
+        {page === "ct" && <><h1>CT Analysis</h1><CT guard={guard} onDone={addHistory} /></>}
         {page === "history" && <History history={history} />}
         {page === "about" && <About />}
         {page === "login" && <Auth gated={Boolean(pending)} onLogin={login} onCancel={() => { setPending(null); go("dash"); }} />}
