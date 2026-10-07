@@ -1,36 +1,38 @@
 import { useRef, useState } from "react";
 import { predictCT, get, num } from "../services/api";
-import { Icon, Bar } from "./ui";
+import { Icon } from "./ui";
 import Assistant from "./Assistant";
 
-const LABELS = { benign: "Benign Pattern Detected", malignant: "Malignant Pattern Detected", normal: "Normal Pattern Detected" };
-const COLORS = { benign: "var(--teal)", malignant: "var(--red)", normal: "var(--blue)" };
-
 export function CTResult({ result }) {
-  const prediction = String(get(result, "prediction") || "");
   const predictedClass = String(get(result, "class") || "");
   const probabilities = get(result, "class probabilities (%)", "class probabilities") || {};
+  const winningClass = Object.entries(probabilities)
+    .sort((a, b) => num(b[1]) - num(a[1]))[0]?.[0] || predictedClass;
+  const unknown = predictedClass === "unknown" || get(result, "manual verification required") === true;
+  const status = unknown
+    ? "Unknown / Needs Manual Verification"
+    : winningClass === "normal"
+      ? "No Cancer"
+      : `Cancer (${winningClass === "malignant" ? "Malignant" : "Benign"})`;
+  const winningPercentage = unknown
+    ? 0
+    : num(probabilities[winningClass] ?? get(result, "confidence (%)", "confidence"));
 
   return (
     <div className="stack fade">
-      {predictedClass === "unknown" && <div className="panel warn"><h3>Unknown image - manual verification required</h3><p>{String(get(result, "unknown reason") || "This image could not be validated as a lung CT scan.")}</p><p className="tiny">The model was not used to assign a benign, malignant, or normal class.</p></div>}
+      {unknown && <div className="panel warn"><h3>Unknown image - manual verification required</h3><p>{String(get(result, "unknown reason") || "This image could not be validated as a lung CT scan.")}</p><p className="tiny">The model was not used to assign a cancer class.</p></div>}
       <div className="panel">
         <small>Model Classification: Lung CT Scan</small>
-        <h2>{LABELS[predictedClass] || prediction}</h2>
+        <h2>{status}</h2>
         <p className="muted">Model: {String(get(result, "model") || "ResNet18")} - not a medical diagnosis</p>
         <div className="meta">
-          <div><span>Confidence</span><b>{num(get(result, "confidence (%)", "confidence")).toFixed(1)}%</b></div>
-          <div><span>Class</span><b>{predictedClass || "-"}</b></div>
+          <div><span>Highest score</span><b>{winningPercentage.toFixed(1)}%</b></div>
+          <div><span>Result</span><b>{status}</b></div>
           <div><span>Modality</span><b>{String(get(result, "modality") || "Lung CT Scan")}</b></div>
           <div><span>Device</span><b>{String(get(result, "device") || "-")}</b></div>
         </div>
       </div>
       <div className="panel">
-        <h3>Model class scores</h3>
-        {Object.entries(probabilities).sort((a, b) => num(b[1]) - num(a[1])).map(([key, value]) => (
-          <Bar key={key} label={LABELS[key] || key} value={num(value)} color={COLORS[key] || "var(--blue)"} />
-        ))}
-        <div className="class-meanings"><b>Class meanings</b><p><strong>Malignant:</strong> the model detected a pattern associated with malignant cases.</p><p><strong>Benign:</strong> the model detected a pattern associated with non-malignant cases.</p><p><strong>Normal:</strong> the model detected a pattern associated with normal lung scans.</p><p><strong>Unknown:</strong> the image did not pass the CT modality check and needs manual verification.</p></div>
         <p className="tiny">These are uncalibrated model scores, not probabilities of having or not having cancer.</p>
         <p className="tiny">Educational/research prototype. This result is not a clinical diagnosis. Discuss concerns and original scans with a qualified clinician.</p>
       </div>

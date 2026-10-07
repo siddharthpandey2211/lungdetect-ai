@@ -1,27 +1,29 @@
 import { useState, useRef } from "react";
 import { predictImage, get, num } from "../services/api";
 import Assistant from "./Assistant";
-import { Icon, Bar } from "./ui";
-
-const NAMES = { lung_n: "Normal lung tissue", lung_aca: "Lung adenocarcinoma pattern", lung_scc: "Lung squamous cell carcinoma pattern", unknown: "Unknown / Needs Manual Verification" };
-const COL = { lung_n: "var(--teal)", lung_aca: "var(--blue)", lung_scc: "#7c5cd6" };
+import { Icon } from "./ui";
 
 export function ImageResult({ r }) {
-  const cls = String(get(r, "class", "storage class") ?? ""), unknown = cls === "unknown" || get(r, "manual verification required") === true;
-  const probs = get(r, "class probabilities (%)", "class probabilities") || {};
+  const cls = String(get(r, "class", "storage class", "model prediction") ?? "");
+  const unknown = cls === "unknown" || get(r, "manual verification required") === true;
+  const status = unknown ? "Unknown / Needs Manual Verification" : cls === "lung_aca" || cls === "lung_scc" ? "Cancer" : "No Cancer";
+  const definition = String(get(r, "definition") ?? (
+    unknown
+      ? get(r, "unknown reason") ?? "The image needs manual verification."
+      : cls === "lung_aca"
+        ? "Adenocarcinoma is defined as a malignant cancer that starts in gland cells."
+        : cls === "lung_scc"
+          ? "Squamous cell carcinoma is a malignant tumor arising from squamous cells."
+          : "The image is classified as normal lung tissue, with no cancer pattern detected."
+  ));
   return (
     <div className="stack fade">
-      {unknown && <div className="panel warn"><h3>Unknown image - manual verification required</h3><p>{String(get(r, "unknown reason") ?? "The model confidence is below the configured threshold. This image has been placed in the unknown category for manual review.")}</p></div>}
-      <div className="panel"><small>Histopathology result</small><h2>{unknown ? NAMES.unknown : NAMES[cls] || String(get(r, "prediction"))}</h2>
+      {unknown && <div className="panel warn"><h3>Unknown image - manual verification required</h3><p>{definition}</p></div>}
+      <div className="panel"><small>Histopathology result</small><h2>{status}</h2>
         <p className="muted">Model: {String(get(r, "model") ?? "ResNet18")} - not a medical diagnosis</p>
         <div className="meta"><div><span>Confidence</span><b>{num(get(r, "confidence (%)", "confidence")).toFixed(1)}%</b></div>
-          <div><span>Threshold</span><b>{num(get(r, "threshold (%)", "threshold")).toFixed(0)}%</b></div>
-          <div><span>Storage class</span><b>{String(get(r, "storage class") ?? "-")}</b></div>
-          <div><span>Manual verification</span><b>{unknown ? "Required" : "Not required"}</b></div></div></div>
-      <div className="panel"><h3>Model class scores</h3>
-        {Object.entries(probs).sort((a, b) => num(b[1]) - num(a[1])).map(([k, v]) => <Bar key={k} label={`${k} - ${NAMES[k] || ""}`} value={num(v)} color={COL[k]} />)}
-        <div className="class-meanings"><b>Class meanings</b><p><strong>lung_n:</strong> normal lung tissue pattern.</p><p><strong>lung_aca:</strong> lung adenocarcinoma pattern in the training labels.</p><p><strong>lung_scc:</strong> lung squamous cell carcinoma pattern in the training labels.</p><p><strong>unknown:</strong> the top score did not meet the configured threshold and needs manual review.</p></div>
-        <p className="tiny">These are uncalibrated model scores, not probabilities of having or not having cancer.</p>
+          <div><span>Classification</span><b>{status}</b></div></div>
+        <p>{definition}</p>
         <p className="tiny">{String(get(r, "disclaimer") ?? "Educational/research prototype. Not a diagnostic tool.")}</p></div>
           {r._persistenceError && <div className="err" role="alert">Image analyzed, but saving failed: {r._persistenceError}</div>}
           <Assistant assessment={r} contextType="histopathology" analysisId={r._analysisId} persistenceError={r._persistenceError} />

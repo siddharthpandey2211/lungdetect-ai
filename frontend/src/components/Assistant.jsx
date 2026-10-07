@@ -10,11 +10,13 @@ const RISK_QUESTIONS = [
 
 const HISTOPATHOLOGY_QUESTIONS = [
   "Explain these class scores in plain language.",
+  "What do malignant, benign, normal, adenocarcinoma, and squamous cell carcinoma mean?",
   "Why might this image need manual verification?",
   "What should I ask my pathologist or doctor about this result?",
 ];
 const SCAN_QUESTIONS = [
   "Explain this scan result in plain language.",
+  "What do malignant, benign, normal, cancer, and no cancer mean?",
   "Suggest general routines and questions to discuss with my doctor.",
   "Could this result be affected by the image quality or wrong scan type?",
 ];

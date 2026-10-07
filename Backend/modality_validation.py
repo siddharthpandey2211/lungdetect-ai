@@ -3,6 +3,9 @@ import numpy as np
 
 
 COLORFULNESS_THRESHOLD = 8.0
+HISTOPATHOLOGY_COLORFULNESS_THRESHOLD = 12.0
+HISTOPATHOLOGY_SATURATION_RATIO = 0.25
+HISTOPATHOLOGY_TEXTURE_THRESHOLD = 8.0
 SCAN_BACKGROUND_THRESHOLD = 20
 
 
@@ -14,8 +17,18 @@ def check_image_modality(image, expected_modality):
     grayscale_minimum = int(grayscale.min())
 
     if expected_modality == "histopathology":
-        valid = colorfulness >= COLORFULNESS_THRESHOLD
-        reason = "This image looks like a grayscale scan rather than a stained tissue image."
+        saturation = rgb.max(axis=2) - rgb.min(axis=2)
+        saturation_ratio = float((saturation >= 20).mean())
+        texture = float(np.abs(np.diff(grayscale, axis=0)).mean())
+        valid = (
+            colorfulness >= HISTOPATHOLOGY_COLORFULNESS_THRESHOLD
+            and saturation_ratio >= HISTOPATHOLOGY_SATURATION_RATIO
+            and texture >= HISTOPATHOLOGY_TEXTURE_THRESHOLD
+        )
+        reason = (
+            "This image does not have the color and tissue texture expected "
+            "from a stained histopathology image."
+        )
     elif expected_modality == "mri":
         valid = colorfulness < COLORFULNESS_THRESHOLD and grayscale_minimum <= SCAN_BACKGROUND_THRESHOLD
         reason = "This image does not match the expected MRI scan appearance."
@@ -29,5 +42,7 @@ def check_image_modality(image, expected_modality):
         "valid": valid,
         "reason": reason,
         "colorfulness": round(colorfulness, 2),
+        "saturation_ratio": round(saturation_ratio, 3) if expected_modality == "histopathology" else None,
+        "texture": round(texture, 2) if expected_modality == "histopathology" else None,
         "grayscale_minimum": grayscale_minimum,
     }

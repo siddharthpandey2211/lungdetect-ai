@@ -187,6 +187,7 @@ def predict_histopathology(
                 "Confidence (%)": 0.0,
                 "Threshold (%)": CONFIDENCE_THRESHOLD,
                 "Class Probabilities (%)": {class_name: 0.0 for class_name in CLASS_NAMES},
+                "Definition": "This image does not match the expected histopathology appearance and needs manual verification.",
                 "Storage Class": "unknown",
                 "Storage Status": "Image does not match the expected histopathology modality.",
                 "Unknown Reason": modality_check["reason"],
@@ -254,35 +255,16 @@ def predict_histopathology(
         }
 
 
-        # ----------------------------------------------------
-        # CONFIDENCE CHECK
-        # ----------------------------------------------------
-
         if confidence >= CONFIDENCE_THRESHOLD:
-
-            # Model is confident enough
             final_class = predicted_class
-
-            save_folder = os.path.join(
-                SAVE_DIR,
-                final_class
-            )
-
-            storage_status = (
-                f"Image classified as {final_class}"
-            )
-
+            save_folder = os.path.join(SAVE_DIR, final_class)
+            storage_status = f"Image classified as {final_class}"
         else:
-
-            # Model is not confident enough
             final_class = "unknown"
-
             save_folder = UNKNOWN_DIR
-
             storage_status = (
-                "Image sent to unknown because "
-                "model confidence is below the "
-                f"{CONFIDENCE_THRESHOLD}% threshold."
+                "Image sent to unknown because model confidence is below "
+                f"the {CONFIDENCE_THRESHOLD}% threshold."
             )
 
 
@@ -303,21 +285,30 @@ def predict_histopathology(
         # Display-friendly result
         # ----------------------------------------------------
 
-        if final_class == "lung_n":
-
-            result = "Normal Lung Tissue"
-
-        elif final_class == "lung_aca":
-
-            result = "Lung Adenocarcinoma Pattern"
-
+        if final_class == "lung_aca":
+            result = "Cancer"
+            definition = (
+                "Adenocarcinoma is defined as a malignant cancer "
+                "that starts in gland cells."
+            )
         elif final_class == "lung_scc":
-
-            result = "Lung Squamous Cell Carcinoma Pattern"
-
+            result = "Cancer"
+            definition = (
+                "Squamous cell carcinoma is a malignant tumor "
+                "arising from squamous cells."
+            )
+        elif final_class == "lung_n":
+            result = "No Cancer"
+            definition = (
+                "The image is classified as normal lung tissue, "
+                "with no cancer pattern detected."
+            )
         else:
-
             result = "Unknown / Needs Manual Verification"
+            definition = (
+                "This image does not match the expected histopathology "
+                "appearance and needs manual verification."
+            )
 
 
         # ----------------------------------------------------
@@ -330,6 +321,12 @@ def predict_histopathology(
                 "ResNet18 Histopathology CNN",
 
             "Prediction":
+                result,
+
+            "Definition":
+                definition,
+
+            "Cancer Status":
                 result,
 
             "Class":

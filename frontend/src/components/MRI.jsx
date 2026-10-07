@@ -1,36 +1,34 @@
 import { useRef, useState } from "react";
 import { predictMRI, get, num } from "../services/api";
-import { Icon, Bar } from "./ui";
+import { Icon } from "./ui";
 import Assistant from "./Assistant";
 
-const LABELS = { cancer: "Cancer Detected", no_cancer: "No Cancer Detected" };
-const COLORS = { cancer: "var(--red)", no_cancer: "var(--teal)" };
-
 export function MRIResult({ result }) {
-  const prediction = String(get(result, "prediction") || "");
   const predictedClass = String(get(result, "class") || "");
   const probabilities = get(result, "class probabilities (%)", "class probabilities") || {};
+  const winningClass = Object.entries(probabilities)
+    .sort((a, b) => num(b[1]) - num(a[1]))[0]?.[0] || predictedClass;
+  const unknown = predictedClass === "unknown" || get(result, "manual verification required") === true;
+  const status = unknown ? "Unknown / Needs Manual Verification" : winningClass === "cancer" ? "Cancer" : "No Cancer";
+  const winningPercentage = unknown
+    ? 0
+    : num(probabilities[winningClass] ?? get(result, "confidence (%)", "confidence"));
 
   return (
     <div className="stack fade">
-      {predictedClass === "unknown" && <div className="panel warn"><h3>Unknown image - manual verification required</h3><p>{String(get(result, "unknown reason") || "This image could not be validated as a lung MRI scan.")}</p><p className="tiny">The model was not used to assign a cancer class.</p></div>}
+      {unknown && <div className="panel warn"><h3>Unknown image - manual verification required</h3><p>{String(get(result, "unknown reason") || "This image could not be validated as a lung MRI scan.")}</p><p className="tiny">The model was not used to assign a cancer class.</p></div>}
       <div className="panel mri-result">
         <small>Model Classification: Lung MRI</small>
-        <h2>{LABELS[predictedClass] || prediction}</h2>
+        <h2>{status}</h2>
         <p className="muted">Model: {String(get(result, "model") || "ConvMixer")} - not a medical diagnosis</p>
         <div className="meta">
-          <div><span>Confidence</span><b>{num(get(result, "confidence (%)", "confidence")).toFixed(1)}%</b></div>
-          <div><span>Class</span><b>{predictedClass || "-"}</b></div>
+          <div><span>Highest score</span><b>{winningPercentage.toFixed(1)}%</b></div>
+          <div><span>Result</span><b>{status}</b></div>
           <div><span>Modality</span><b>{String(get(result, "modality") || "Lung MRI")}</b></div>
           <div><span>Device</span><b>{String(get(result, "device") || "-")}</b></div>
         </div>
       </div>
       <div className="panel">
-        <h3>Model class scores</h3>
-        {Object.entries(probabilities).sort((a, b) => num(b[1]) - num(a[1])).map(([key, value]) => (
-          <Bar key={key} label={LABELS[key] || key} value={num(value)} color={COLORS[key] || "var(--blue)"} />
-        ))}
-        <div className="class-meanings"><b>Class meanings</b><p><strong>Cancer:</strong> the model detected a pattern associated with cancer in its training data.</p><p><strong>No cancer:</strong> the model did not detect the trained cancer pattern in this image.</p><p><strong>Unknown:</strong> the image did not pass the MRI modality check and needs manual verification.</p></div>
         <p className="tiny">These are uncalibrated model scores, not probabilities of having or not having cancer.</p>
         <p className="tiny">Educational/research prototype. This result is not a clinical diagnosis. Discuss concerns and original images with a qualified clinician.</p>
       </div>
