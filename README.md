@@ -13,8 +13,68 @@ LungDetect AI is an educational prototype combining symptom-based risk scoring w
 - Configurable image confidence threshold; low-confidence images are classified as `unknown` for review.
 - Modality validation that flags obvious cross-modality uploads as `unknown` for manual verification.
 - Risk-, pathology-, MRI-, and CT-specific chat using local Ollama by default; OpenAI is optional.
-- Supabase email/password authentication, user-scoped analysis and chat records, and private image storage protected by row-level security (RLS).
+- Supabase email/password authentication; user-scoped risk, histopathology, MRI, and CT analysis records; private modality-specific image storage; and chat history protected by row-level security (RLS).
+- Nearby verified-provider search asks only for an Indian PIN code and search radius. Results are sorted by straight-line distance; ownership is shown only as recorded in Supabase.
 - Training and preprocessing scripts with evaluation plots and saved artifacts.
+
+## Frontend tour
+
+The screenshots below show the responsive frontend with an empty demo history. No patient
+images or account records are included.
+
+### Dashboard
+
+![LungDetect AI dashboard with analysis shortcuts and activity overview](docs/screenshots/dashboard.png)
+
+The sidebar buttons open **Dashboard**, **Risk Assessment**, **Find Lung Cancer Care**,
+**Histopathology**, **MRI Analysis**, **CT Analysis**, **History**, and **About**.
+On the Dashboard, **Start Risk Assessment**, **Analyze Image**, **Analyze MRI**, and
+**Analyze CT** open their respective workflows. The totals and activity chart summarize
+the signed-in user's saved analyses.
+
+### Risk assessment
+
+![Risk assessment form with basic information, lifestyle, and symptom controls](docs/screenshots/risk-assessment.png)
+
+Choose the gender option, enter age, and switch the lifestyle and symptom toggles as
+appropriate. **Calculate Risk** submits the form. After the result appears, **New
+assessment** returns to the form; the result panel also offers suggested questions and a
+message box with **Send** for the context-aware assistant.
+
+### Find nearby cancer care
+
+![Nearby-care search form for PIN code and radius](docs/screenshots/nearby-care-search.png)
+
+Enter an Indian six-digit PIN code and a search radius from 1 to 100 km, then choose
+**Find nearby hospitals**. The results list includes only database records marked
+verified; distance is approximate straight-line distance, and government/private status
+is displayed as stored rather than inferred. Result links can open **View directions**,
+the **Official website**, a phone number, or appointment page when that information is
+available. **Retry** appears if a search returns an error.
+
+### Image analysis
+
+![Histopathology image upload area](docs/screenshots/histopathology-upload.png)
+
+![MRI image upload area](docs/screenshots/mri-upload.png)
+
+![CT scan upload area](docs/screenshots/ct-upload.png)
+
+For Histopathology, MRI, or CT, drag an image onto the upload area or click it to choose
+a JPG, PNG, or WEBP file. After choosing a file, **Analyze Image**, **Analyze MRI**, or
+**Analyze CT** runs that modality's model; **Remove** clears the selected file before
+analysis. The result area explains the experimental class and score and offers suggested
+assistant questions plus **Send**. Unsupported files, oversized MRI/CT files, and
+unrecognized or low-confidence images show validation or manual-review feedback.
+
+### History and account
+
+![Analysis history with modality filters](docs/screenshots/history.png)
+
+The History buttons **All**, **Risk Assessments**, **Histopathology**, **MRI**, and
+**CT** filter the signed-in user's saved analysis rows. **Login** opens the sign-in form;
+**Create Account** switches to registration, and **Back** returns to the app. After
+sign-in, the sidebar account button signs out.
 
 ## Technology
 
@@ -30,17 +90,20 @@ LungDetect AI is an educational prototype combining symptom-based risk scoring w
 
 ## Project Structure
 
-The tree below shows source plus expected local data/model paths. Dataset files, histopathology images, trained weights, generated plots, local environments, build output, `.env.local`, and `node_modules` are excluded from the source-only GitHub release. Empty/generated paths may not appear in a fresh clone.
+The tree below shows the current source layout and the local data/model paths used by the application. Datasets, uploaded images, trained weights, generated plots, local environments, build output, `.env.local`, and `node_modules` are local/generated files and may not appear in a fresh clone.
 
 ```text
 Early Cancer Detection/
 ├── .gitignore
 ├── README.md
-├── start-app.ps1
+├── evaluate_model.py
 ├── lung_cancer.csv
+├── railway.json
+├── start-app.ps1
 ├── Backend/
 │   ├── app.py
 │   ├── ct_predict.py
+│   ├── dataset_predict.py
 │   ├── image_predict.py
 │   ├── modality_validation.py
 │   ├── mri_predict.py
@@ -54,29 +117,30 @@ Early Cancer Detection/
 │   ├── train_image_model.py
 │   └── train_mri_convmixer.py
 ├── Data/
-│   ├── ct_Scan/
-│   │   ├── archive.zip
+│   ├── ct_scan/
 │   │   ├── extracted/
 │   │   │   └── The IQ-OTHNCCD lung cancer dataset/
-│   │   │       ├── Bengin cases/
-│   │   │       ├── Malignant cases/
-│   │   │       └── Normal cases/
+│   │   │       └── The IQ-OTHNCCD lung cancer dataset/
 │   │   └── uploads/
 │   ├── histopathology/
 │   │   ├── lung_aca/
 │   │   ├── lung_n/
 │   │   ├── lung_scc/
-│   │   └── unknown/
-│   ├── mri/
-│   │   ├── extracted/
+│   │   ├── unknown/            # Legacy/manual-review data; never a training class
 │   │   └── uploads/
-│   ├── MRI Scan/                 # Training notebooks
+│   ├── mri/
+│   │   ├── lung_cancer_MRI_dataset/
+│   │   └── uploads/
 │   ├── lung_cancer.csv
+│   ├── lung_cancer_prediction.csv
 │   ├── processed.csv
-│   ├── X_train.pkl, X_test.pkl
-│   └── y_train.pkl, y_test.pkl
+│   ├── X_test.pkl
+│   ├── X_train.pkl
+│   ├── y_test.pkl
+│   └── y_train.pkl
 ├── frontend/
 │   ├── .env.example
+│   ├── .env.local
 │   ├── index.html
 │   ├── package.json
 │   ├── package-lock.json
@@ -99,17 +163,23 @@ Early Cancer Detection/
 │       │   └── supabase.js
 │       └── styles/
 │           └── app.css
-├── models/                       # Local trained checkpoints/artifacts
+├── Kaggle_Output/
+│   └── lung-cancer-prediction.log
+├── models/                       # Local trained checkpoints and metadata
 ├── plots/                        # Local evaluation plots
 └── supabase/
-    └── schema.sql
+    ├── schema.sql
+    └── seed_mumbai_mmr.sql
 ```
 
 ### Key modules
 
 - `Backend/app.py`: health, tabular risk, image-analysis, and AI-chat API routes.
+- `Backend/providers.py`: validates PIN searches, reads verified Supabase providers, and applies straight-line radius filtering using local coordinates.
+- `Backend/pin_coordinates.py`: local reference coordinates for supported PIN-code search origins.
 - `Backend/predict.py`: loads the saved tabular model, scaler, and encoders.
-- `Backend/image_predict.py`: loads the histopathology ResNet18 model, applies the image threshold, and saves images locally under `Data/histopathology/<class>/` or `unknown/`.
+- `Backend/dataset_predict.py`: loads the separate experimental `Final_Prediction` pipeline used by `/predict-dataset`.
+- `Backend/image_predict.py`: loads the histopathology ResNet18 model, applies the image threshold, and stores uploaded images only under `Data/histopathology/uploads/`; model predictions never route uploads into training classes.
 - `Backend/mri_predict.py`: loads the ConvMixer MRI checkpoint and returns binary MRI class scores.
 - `Backend/ct_predict.py`: loads the ResNet18 CT checkpoint and returns benign/malignant/normal class scores.
 - `Backend/modality_validation.py`: flags obvious cross-modality uploads as unknown before classification.
@@ -119,6 +189,57 @@ Early Cancer Detection/
 - `frontend/src/services/supabase.js`, `persistence.js`: Supabase client and user-scoped persistence.
 - `frontend/src/components/Risk.jsx`, `Histo.jsx`, `MRI.jsx`, `CT.jsx`, `Assistant.jsx`: prediction forms/results, modality introductions, and context-aware chat.
 - `supabase/schema.sql`: tables, grants, RLS rules, private bucket and storage policies; also requests a PostgREST schema-cache refresh.
+- `supabase/seed_mumbai_mmr.sql`: source-attributed MMR postal-code centroids and additional oncology provider records.
+
+### Verified provider search
+
+Run `supabase/schema.sql` in the Supabase SQL editor before using `GET /api/providers`
+or saving analysis data. It creates the user-owned MRI and CT analysis tables and
+private scan-image buckets in addition to the existing analyses, chat, and providers schema.
+Then run `supabase/seed_mumbai_mmr.sql` to add mapped Mumbai Metropolitan Region PIN
+codes and source-verified oncology providers. It loads 182 PIN records across Mumbai,
+Mumbai Suburban, Thane, Palghar, and selected Raigad/Navi Mumbai areas. The seed is safe
+to rerun. These are directory entries, not a clinical ranking or endorsement.
+The provider section includes an additive migration for `ownership_type`,
+`lung_cancer_expertise`, `multidisciplinary_care`, `diagnostic_capabilities`,
+`address_verified`, `government_supported`, `charitable_assistance`, and
+`cost_information`. Populate those fields only from documented evidence. Existing rows
+default to conservative values and remain searchable only when `verified = true`.
+Add provider records only after confirming their specialty, location, services, source link,
+and verification date. New records must have `verified = false` until that review is
+complete; the API reads only records marked verified. Do not duplicate existing institutions
+or infer ownership from a provider name. Ownership is displayed from `ownership_type`;
+unknown values are shown as not specified.
+
+Configure these backend environment variables:
+
+- `SUPABASE_URL`: Supabase project URL.
+- `SUPABASE_PUBLISHABLE_KEY`: Supabase publishable key used as the REST API key.
+- `SUPABASE_ANON_KEY`: Supabase publishable/anonymous key used to read the public verified-provider policy.
+
+Copy `Backend/.env.example` to a local, untracked environment file or configure the same
+variables in the deployment platform. The provider lookup uses Supabase REST and does not
+need a PostgreSQL password. The frontend must use only `VITE_SUPABASE_URL` and
+`VITE_SUPABASE_ANON_KEY`.
+
+Replace the example URL and key in `Backend/.env` with the project URL and publishable
+(or legacy anon) key from Supabase Project Settings → API, then restart the backend.
+The example values are not usable credentials. Keep this backend file private and never
+use a `service_role` key in the frontend.
+
+Example:
+
+```text
+GET /api/providers?pin=401303&radius_km=25
+```
+
+The response labels distances as `straight_line`; they are not driving distances. PIN centers
+are approximate post-office coordinate averages, not exact household locations. The seed
+includes postal areas mapped from Mumbai, Mumbai Suburban, Thane, Palghar, and selected
+Raigad/Navi Mumbai districts. If no verified records match,
+the frontend displays an explicit empty state rather than showing unverified leads. Provider
+records are fetched from PostgREST in bounded pages so a single upstream response limit does
+not silently truncate the directory.
 
 ## Requirements
 
@@ -234,7 +355,7 @@ Obtain each dataset and pre-trained artifact from its authorized source, review 
 
 1. Create a Supabase project and enable email/password sign-in in **Authentication**.
 2. Set the local site/redirect URL to `http://localhost:3000` in the Supabase URL configuration.
-3. In **SQL Editor**, run the full contents of [`supabase/schema.sql`](supabase/schema.sql). It creates `analyses` and `chat_messages`, enables RLS, and provisions the private `pathology-images` bucket.
+3. In **SQL Editor**, run [`supabase/schema.sql`](supabase/schema.sql), then run [`supabase/seed_mumbai_mmr.sql`](supabase/seed_mumbai_mmr.sql). The schema creates the user-scoped analysis and chat tables, enables RLS, and provisions private pathology, MRI, and CT image buckets. The seed adds source-attributed PIN coordinates and cancer-care providers.
 4. Copy the frontend environment template:
 
    ```powershell
@@ -242,9 +363,15 @@ Obtain each dataset and pre-trained artifact from its authorized source, review 
    ```
 
 5. In `frontend/.env.local`, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from the Supabase project API settings. The Vite prefix must be `VITE_`. Never put a database password or `service_role` key in frontend configuration.
-6. Restart Vite after changing the env file. If PostgREST still reports that `public.analyses` is missing from its schema cache, rerun the SQL script and refresh the app.
+6. Restart Vite after changing the env file. If PostgREST reports missing tables or schema-cache errors, rerun `schema.sql` and refresh the app.
 
-Supabase stores full risk answers/results, image-analysis result metadata, chat messages, and uploaded histopathology, MRI, and CT images in a private bucket. RLS scopes rows and image paths to the signed-in user. The backend also keeps a separate local histopathology review archive in `Data/histopathology`; deleting a Supabase account or object does not remove that local archive.
+Supabase stores full risk answers/results, MRI and CT model-result JSON, image MIME type and size, chat messages, and uploaded histopathology, MRI, and CT images in private modality-specific buckets. MRI and CT records use separate `mri_analyses` and `ct_scan_analyses` tables. RLS scopes rows, chat references, and image paths to the signed-in user. The backend keeps local copies of image uploads in each modality's `uploads/` directory; these are separate from both the original training class folders and the private Supabase bucket. Deleting cloud data does not remove local upload copies.
+
+The PIN seed uses the India Post All India Pincode Directory
+([data.gov.in dataset](https://data.gov.in/node/6818285)); post-office coordinates are
+aggregated to approximate PIN-area centers. OpenStreetMap coordinates are attributed to
+OpenStreetMap contributors under ODbL 1.0. Provider locations and specialties link to
+official hospital pages; directory records are not a recommendation or “best hospital” ranking.
 
 ### 3. Install and configure local AI chat
 
@@ -319,10 +446,11 @@ npm run dev -- --host 0.0.0.0 --port 3000
 1. Configure Supabase and sign in or create an account.
 2. In **Risk Assessment**, submit age, gender, and symptom indicators. Indicator values are encoded as `1 = No`, `2 = Yes`; gender is `M` or `F`.
 3. The backend returns the Gaussian Naive Bayes result. The result screen offers a context-aware chat; medication questions are directed to a clinician/pharmacist, not prescribed.
-4. In **Histopathology**, upload a JPG/JPEG, PNG, or WEBP image and analyze it. Results below the configurable threshold (default 70%) or obvious modality mismatches are stored as `unknown` and marked for manual verification.
+4. In **Histopathology**, upload a JPG/JPEG, PNG, or WEBP image and analyze it. Low-confidence results (default threshold 70%) and obvious modality mismatches are marked `unknown` for manual verification; every retained upload stays under `Data/histopathology/uploads/`.
 5. In **MRI Analysis** or **CT Analysis**, upload the corresponding image. MRI returns `cancer` or `no_cancer`; CT returns `benign`, `malignant`, or `normal`. Obvious cross-modality uploads are returned as `unknown`.
-6. The image assistants receive class scores and result metadata, not the uploaded image. The model scores are uncalibrated outputs and are not clinical disease probabilities.
-7. **History** and dashboard totals show saved analyses for the signed-in Supabase user.
+6. Image uploads are content-validated, limited to 10 MB, and stored locally under the matching modality's `uploads/` folder with generated filenames; prediction labels never determine a storage folder. Signed-in analysis images are also stored separately in the private Supabase bucket.
+7. The image assistants receive class scores and result metadata, not the uploaded image. The model scores are uncalibrated outputs and are not clinical disease probabilities.
+8. **History** and dashboard totals show saved analyses for the signed-in Supabase user.
 
 ## API
 
@@ -348,11 +476,11 @@ Run commands from the project root with the Python environment activated:
 python Backend\preprocess.py
 python Backend\train.py
 python Backend\train_image_model.py
-python Backend\train_mri_convmixer.py
-python Backend\train_ct_resnet18.py
+python Backend\train_convmixer.py
+python Backend\train_ct_improved.py
 ```
 
-`preprocess.py` prepares the tabular data and plots. `train.py` evaluates the tabular classifiers and writes fitted model/scaler/encoder artifacts under `models/` and split data under `Data/`. `train_image_model.py` trains ResNet18 from `Data/histopathology/` and writes `models/lung_resnet18.pth`. `train_mri_convmixer.py` trains ConvMixer from `Data/mri/` and writes `models/lung_mri_convmixer.pth`. `train_ct_resnet18.py` trains ResNet18 from `Data/ct_Scan/` and writes the CT checkpoint under `models/`. Trained artifacts are required to run inference; they are not regenerated when the app starts.
+`preprocess.py` prepares the tabular data and plots. `train.py` evaluates the tabular classifiers and writes fitted model/scaler/encoder artifacts under `models/` and split data under `Data/`. `train_image_model.py` trains ResNet18 only from direct image files in the `lung_aca`, `lung_n`, and `lung_scc` class folders and writes `models/lung_resnet18.pth`. `train_convmixer.py` trains ConvMixer from the `train/` and `validate/` class folders under `Data/mri/lung_cancer_MRI_dataset/` and writes `models/lung_mri_convmixer.pth`. The legacy `train_mri_improved.py` also reads only those two MRI classes but saves a separate checkpoint under `Backend/outputs/`; it is not the checkpoint used by inference. `train_ct_improved.py` trains CT ResNet18 from the three named IQ-OTHNCCD class folders. These image trainers select only files directly inside the explicitly named training classes; uploads, unknown, and other non-class directories are excluded. Histopathology trainers also skip UUID-named JPGs produced by the previous upload behavior. Never copy internet-downloaded test images or application uploads into source class folders; manually audit any other files copied there because their provenance cannot be inferred. Trained artifacts are required to run inference; they are not regenerated when the app starts.
 
 ## Publishing and large files
 
