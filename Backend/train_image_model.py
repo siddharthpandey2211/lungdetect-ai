@@ -7,6 +7,7 @@
 import os
 from pathlib import Path
 import random
+import re
 
 os.environ.setdefault("MPLBACKEND", "Agg")
 os.environ.setdefault("MPLCONFIGDIR", os.path.join(os.getcwd(), ".mplconfig"))
@@ -15,8 +16,9 @@ os.makedirs(os.environ["MPLCONFIGDIR"], exist_ok=True)
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
-from torchvision import datasets, transforms, models
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset, random_split
+from torchvision import transforms, models
 from torchvision.models import ResNet18_Weights
 
 from sklearn.metrics import (
@@ -111,6 +113,47 @@ required_classes = [
     "lung_scc"
 ]
 
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+LEGACY_UPLOAD_FILENAME = re.compile(r"^[0-9a-f]{32}\.jpg$", re.IGNORECASE)
+
+
+class TrainingImageDataset(Dataset):
+    def __init__(self, root, class_names, transform):
+        self.classes = sorted(class_names)
+        self.class_to_idx = {
+            class_name: index
+            for index, class_name in enumerate(self.classes)
+        }
+        self.transform = transform
+        self.samples = []
+
+        for class_name in self.classes:
+            class_path = root / class_name
+            if not class_path.is_dir():
+                raise FileNotFoundError(f"Missing class folder:\n{class_path}")
+            self.samples.extend(
+                (path, self.class_to_idx[class_name])
+                for path in sorted(class_path.iterdir())
+                if (
+                    path.is_file()
+                    and path.suffix.lower() in IMAGE_EXTENSIONS
+                    and not LEGACY_UPLOAD_FILENAME.fullmatch(path.name)
+                )
+            )
+
+        if not self.samples:
+            raise RuntimeError(f"No training images found in {root}")
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, index):
+        image_path, label = self.samples[index]
+        with Image.open(image_path) as source:
+            image = source.convert("RGB")
+        return self.transform(image), label
+
+
 for class_name in required_classes:
 
     class_path = DATASET_DIR / class_name
@@ -122,7 +165,11 @@ for class_name in required_classes:
 
     image_count = len([
         x for x in class_path.iterdir()
-        if x.is_file()
+        if (
+            x.is_file()
+            and x.suffix.lower() in IMAGE_EXTENSIONS
+            and not LEGACY_UPLOAD_FILENAME.fullmatch(x.name)
+        )
     ])
 
     print(f"{class_name}: {image_count} images")
@@ -174,9 +221,16 @@ test_transform = transforms.Compose([
 
 print("\nLoading images...")
 
-full_dataset = datasets.ImageFolder(
-    root=str(DATASET_DIR),
-    transform=train_transform
+full_dataset = TrainingImageDataset(
+    DATASET_DIR,
+    required_classes,
+    train_transform,
+)
+
+evaluation_dataset = TrainingImageDataset(
+    DATASET_DIR,
+    required_classes,
+    test_transform,
 )
 
 print("\nClasses:")
@@ -208,21 +262,14 @@ train_dataset, val_dataset, test_dataset = random_split(
 )
 
 # Validation and test should NOT use augmentation.
-# Create separate ImageFolder instances so the training dataset does not
-# accidentally inherit the validation/test transform.
+# Reuse the same class-scoped sample order with an evaluation transform.
 val_dataset = torch.utils.data.Subset(
-    datasets.ImageFolder(
-        root=str(DATASET_DIR),
-        transform=test_transform
-    ),
+    evaluation_dataset,
     val_dataset.indices
 )
 
 test_dataset = torch.utils.data.Subset(
-    datasets.ImageFolder(
-        root=str(DATASET_DIR),
-        transform=test_transform
-    ),
+    evaluation_dataset,
     test_dataset.indices
 )
 

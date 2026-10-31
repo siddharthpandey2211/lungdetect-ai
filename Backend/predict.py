@@ -1,171 +1,173 @@
-# ==========================================================
-# LungDetect AI
-# File: predict.py
-# ==========================================================
 
 from pathlib import Path
+
 import joblib
 import pandas as pd
+import re
 
-# ==========================================================
-# Load Model
-# ==========================================================
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+MODEL_PATH = PROJECT_ROOT / "models" / "gaussian_nb.pkl"
+METADATA_PATH = PROJECT_ROOT / "models" / "gaussian_nb_metadata.pkl"
 
-print("=" * 50)
-print("Loading AI Model...")
-print("=" * 50)
+model = joblib.load(MODEL_PATH)
+metadata = joblib.load(METADATA_PATH)
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-MODELS_DIR = BASE_DIR / "models"
-DATA_DIR = BASE_DIR / "Data"
-PROCESSED_DATASET_PATH = DATA_DIR / "processed.csv"
 
-model = joblib.load(MODELS_DIR / "gaussian_nb.pkl")
-scaler = joblib.load(MODELS_DIR / "scaler.pkl")
-encoders = joblib.load(MODELS_DIR / "encoders.pkl")
-model_name = "Gaussian Naive Bayes"
+def predict_lung_cancer(user_input):
+    """
+    Returns a prediction only when all input fields pass validation.
+    Invalid input raises ValueError; no cancer prediction is returned.
+    """
 
-TARGET_COLUMN = None
-FEATURE_COLUMNS = []
+    expected_features = metadata["features"]
 
-if PROCESSED_DATASET_PATH.exists():
-    processed_df = pd.read_csv(PROCESSED_DATASET_PATH)
-    for candidate in ["LUNG_CANCER", "survived"]:
-        if candidate in processed_df.columns:
-            TARGET_COLUMN = candidate
-            break
+    # 1. Require exactly the expected fields
+    if not isinstance(user_input, dict):
+        raise ValueError("Input must be a dictionary.")
 
-    if TARGET_COLUMN is not None:
-        FEATURE_COLUMNS = [column for column in processed_df.columns if column != TARGET_COLUMN]
-    else:
-        FEATURE_COLUMNS = list(processed_df.columns)
-
-print("Model Loaded Successfully!")
-
-# ==========================================================
-# Prediction Function
-# ==========================================================
-
-def _normalize_patient_data(patient_data):
-    normalized = {}
-    for key, value in patient_data.items():
-        canonical_key = str(key).strip().lower().replace(" ", "_").replace("-", "_")
-        normalized[canonical_key] = value
-
-    fallback_values = {
-        "gender": "M",
-        "age": 50,
-        "smoking": 1,
-        "yellow_fingers": 1,
-        "anxiety": 1,
-        "peer_pressure": 1,
-        "chronic_disease": 1,
-        "fatigue": 1,
-        "allergy": 1,
-        "wheezing": 1,
-        "alcohol_consuming": 1,
-        "coughing": 1,
-        "shortness_of_breath": 1,
-        "swallowing_difficulty": 1,
-        "chest_pain": 1,
+    # API clients use readable snake_case names while the training data uses
+    # uppercase names and spaces (for example, shortness_of_breath vs
+    # SHORTNESS OF BREATH). Normalize both forms at this boundary.
+    normalized_keys = {
+        re.sub(r"[^a-z0-9]", "", str(key).lower()): key
+        for key in user_input
+    }
+    expected_by_normalized_key = {
+        re.sub(r"[^a-z0-9]", "", str(feature).lower()): feature
+        for feature in expected_features
     }
 
-    for key, value in fallback_values.items():
-        if key not in normalized:
-            normalized[key] = value
+    unknown_keys = set(normalized_keys) - set(expected_by_normalized_key)
+    missing = set(expected_by_normalized_key) - set(normalized_keys)
 
-    if FEATURE_COLUMNS:
-        ordered_features = []
-        for column in FEATURE_COLUMNS:
-            canonical_column = column.strip().lower().replace(" ", "_").replace("-", "_")
-            ordered_features.append(normalized.get(canonical_column, fallback_values.get(canonical_column, "")))
-        df = pd.DataFrame([ordered_features], columns=FEATURE_COLUMNS)
-    else:
-        df = pd.DataFrame([normalized])
+    if missing:
+        missing_names = sorted(expected_by_normalized_key[key] for key in missing)
+        raise ValueError(f"Missing fields: {missing_names}")
 
-    for column in df.columns:
-        if column in encoders:
-            encoder = encoders[column]
-            values = df[column].astype(str)
-            known = list(encoder.classes_)
-            values = values.apply(lambda value: value if value in known else known[0])
-            df[column] = encoder.transform(values)
-        else:
-            try:
-                df[column] = pd.to_numeric(df[column], errors="coerce")
-            except Exception:
-                pass
+    if unknown_keys:
+        extra_names = sorted(normalized_keys[key] for key in unknown_keys)
+        raise ValueError(f"Unexpected fields: {extra_names}")
 
-    return df
+    row = {
+        expected_by_normalized_key[key]: user_input[original_key]
+        for key, original_key in normalized_keys.items()
+    }
 
+    # The training data covers ages 21 through 87 only. Do not extrapolate
+    # the model outside that observed age range.
+    age_feature = next(
+        (feature for feature in expected_features if str(feature).upper() == "AGE"),
+        None,
+    )
+    if age_feature is not None:
+        try:
+            age = float(row[age_feature])
+        except (TypeError, ValueError):
+            age = None
 
-def predict_lung_cancer(patient_data):
-    """Predict lung cancer risk from a dictionary of symptom features."""
+        if age is not None and pd.notna(age) and (age <= 20 or age > 87):
+            return {
+                "available": False,
+                "prediction": "NO DATA AVAILABLE",
+                "cancer_probability": None,
+                "message": (
+                    "No training data is available for this age. "
+                    "The model supports ages 21 through 87 only."
+                ),
+            }
 
-    df = _normalize_patient_data(patient_data)
+    # 2. Normalize gender
+    if "GENDER" in row:
+        gender = str(row["GENDER"]).strip().upper()
 
-    X = scaler.transform(df)
+        if gender not in metadata["gender_mapping"]:
+            raise ValueError("GENDER must be F or M.")
 
-    prediction = model.predict(X)[0]
+        row["GENDER"] = metadata["gender_mapping"][gender]
+
+    # 3. Validate numeric inputs and allowed values
+    validated = {}
+
+    for feature in expected_features:
+        value = row[feature]
+
+        if value is None or isinstance(value, bool):
+            raise ValueError(f"{feature} must have a valid value.")
+
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{feature} must be numeric.")
+
+        if not pd.notna(number):
+            raise ValueError(f"{feature} cannot be missing.")
+
+        # Reject values outside the training range.
+        minimum = float(metadata["min_values"][feature])
+        maximum = float(metadata["max_values"][feature])
+
+        if number < minimum or number > maximum:
+            raise ValueError(
+                f"{feature} must be between {minimum:g} and {maximum:g}."
+            )
+
+        # Symptom indicators must use values observed during training.
+        if feature in metadata["allowed_values"]:
+            allowed = metadata["allowed_values"][feature]
+
+            if number not in allowed:
+                raise ValueError(
+                    f"Invalid {feature}: {value}. "
+                    f"Allowed values: {allowed}"
+                )
+
+        validated[feature] = number
+
+    # 4. Predict only after every validation succeeds
+    X = pd.DataFrame([validated], columns=expected_features)
+
+    prediction = int(model.predict(X)[0])
     probability = model.predict_proba(X)[0]
-    cancer_probability = probability[1] * 100
+    cancer_probability = float(probability[list(model.classes_).index(1)])
+    confidence = float(probability.max())
 
     return {
-        "Model": model_name,
-        "Prediction": "High Risk of Lung Cancer" if prediction == 1 else "Low Risk of Lung Cancer",
-        "Cancer Probability (%)": float(round(float(cancer_probability), 2)),
-        "Survival Chance (%)": float(round(float(100 - cancer_probability), 2)),
-        "Confidence (%)": float(round(float(max(probability) * 100), 2)),
+        "prediction": "YES" if prediction == 1 else "NO",
+        "model": "Gaussian Naive Bayes",
+        # Keep the model calculation as a fraction internally, but expose
+        # the API value as a percentage for the frontend.
+        "cancer_probability": round(cancer_probability * 100, 2),
+        "confidence": round(confidence * 100, 2),
+        "message": (
+            "Educational model output only; not a medical diagnosis."
+        )
     }
 
-# ==========================================================
-# Example
-# ==========================================================
 
+# --------------------------------------------------
+# Example usage
+# --------------------------------------------------
 if __name__ == "__main__":
-
-    sample_patient = {
-
-        "GENDER":"M",
-
-        "AGE":67,
-
-        "SMOKING":"YES",
-
-        "YELLOW_FINGERS":"YES",
-
-        "ANXIETY":"NO",
-
-        "PEER_PRESSURE":"YES",
-
-        "CHRONIC DISEASE":"NO",
-
-        "FATIGUE ":"YES",
-
-        "ALLERGY ":"NO",
-
-        "WHEEZING":"YES",
-
-        "ALCOHOL CONSUMING":"YES",
-
-        "COUGHING":"YES",
-
-        "SHORTNESS OF BREATH":"YES",
-
-        "SWALLOWING DIFFICULTY":"NO",
-
-        "CHEST PAIN":"YES"
-
+    sample = {
+        "GENDER": "M",
+        "AGE": 150,
+        "SMOKING": 1,
+        "YELLOW_FINGERS": 2,
+        "ANXIETY": 2,
+        "PEER_PRESSURE": 1,
+        "CHRONIC DISEASE": 1,
+        "FATIGUE": 2,
+        "ALLERGY": 1,
+        "WHEEZING": 2,
+        "ALCOHOL CONSUMING": 2,
+        "COUGHING": 2,
+        "SHORTNESS OF BREATH": 2,
+        "SWALLOWING DIFFICULTY": 2,
+        "CHEST PAIN": 2
     }
 
-    result = predict_lung_cancer(sample_patient)
-
-    print("\n")
-    print("=" * 50)
-    print("Prediction Result")
-    print("=" * 50)
-
-    for key, value in result.items():
-        print(f"{key}: {value}")
-
-    print("=" * 50)
+    try:
+        result = predict_lung_cancer(sample)
+        print(result)
+    except ValueError as error:
+        print("INPUT REJECTED:", error)

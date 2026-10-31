@@ -9,3 +9,5 @@ export const supabase = supabaseConfigured
   : null;
 
 export const PATHOLOGY_BUCKET = "pathology-images";
+export const MRI_BUCKET = "mri-images";
+export const CT_BUCKET = "ct-scan-images";

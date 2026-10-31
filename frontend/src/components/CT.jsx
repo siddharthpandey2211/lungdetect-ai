@@ -49,6 +49,7 @@ export default function CT({ onDone, guard }) {
   const pick = (selected) => {
     if (!selected) return;
     if (!["image/jpeg", "image/png", "image/webp"].includes(selected.type)) return setErr("Please upload a JPG, PNG, or WEBP CT image.");
+    if (selected.size > 10 * 1024 * 1024) return setErr("CT images must be no larger than 10 MB.");
     setErr(""); setResult(null); setFile(selected);
   };
 

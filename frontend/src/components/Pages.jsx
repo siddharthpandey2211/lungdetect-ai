@@ -81,7 +81,7 @@ export function About() {
         <div className="panel"><h3>MRI scan</h3><p className="muted">Uses magnetic fields and radio waves to create detailed chest images without ionizing radiation. MRI findings must be interpreted by a radiologist or clinician.</p></div>
         <div className="panel"><h3>CT scan</h3><p className="muted">Uses X-rays and computer processing to create cross-sectional images of the lungs and chest. CT classification is an experimental ResNet18 output, not a clinical conclusion.</p></div></div>
       <div className="panel"><h3>Histopathology classes</h3><ul><li>lung_n - Normal lung tissue</li><li>lung_aca - Lung adenocarcinoma pattern</li><li>lung_scc - Lung squamous cell carcinoma pattern</li></ul>
-        <p className="tiny">Images below the confidence threshold (default 70%) are classed "unknown" and saved for manual review.</p></div>
+        <p className="tiny">Images below the confidence threshold (default 70%) are marked "unknown" for manual review and retained in the uploads folder, separate from training classes.</p></div>
       <div className="panel warn"><h3>Important Disclaimer</h3><p>This application is an educational/research prototype and is not a medical diagnostic tool. Results should not be used as a substitute for professional medical evaluation.</p></div></div>
   );
 }

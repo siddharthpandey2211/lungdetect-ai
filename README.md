@@ -90,57 +90,44 @@ sign-in, the sidebar account button signs out.
 
 ## Project Structure
 
-The tree below shows the current source layout and the local data/model paths used by the application. Datasets, uploaded images, trained weights, generated plots, local environments, build output, `.env.local`, and `node_modules` are local/generated files and may not appear in a fresh clone.
+The tree below shows the source files included in the repository. Datasets, uploaded
+images, trained weights, generated plots, local environments, build output, `.env.local`,
+and `node_modules` are local/generated files and are intentionally excluded from GitHub.
 
 ```text
 Early Cancer Detection/
 ├── .gitignore
 ├── README.md
+├── docs/
+│   └── screenshots/
 ├── evaluate_model.py
-├── lung_cancer.csv
 ├── railway.json
 ├── start-app.ps1
 ├── Backend/
+│   ├── .env.example
 │   ├── app.py
 │   ├── ct_predict.py
 │   ├── dataset_predict.py
+│   ├── evaluate_ct_checkpoint.py
 │   ├── image_predict.py
 │   ├── modality_validation.py
 │   ├── mri_predict.py
 │   ├── predict.py
+│   ├── pin_coordinates.py
 │   ├── preprocess.py
+│   ├── providers.py
 │   ├── requirements.txt
 │   ├── test_image.py
 │   ├── test_mri_predict.py
 │   ├── train.py
+│   ├── train_convmixer.py
 │   ├── train_ct_resnet18.py
+│   ├── train_ct_improved.py
+│   ├── train_histopathology_improved.py
 │   ├── train_image_model.py
-│   └── train_mri_convmixer.py
-├── Data/
-│   ├── ct_scan/
-│   │   ├── extracted/
-│   │   │   └── The IQ-OTHNCCD lung cancer dataset/
-│   │   │       └── The IQ-OTHNCCD lung cancer dataset/
-│   │   └── uploads/
-│   ├── histopathology/
-│   │   ├── lung_aca/
-│   │   ├── lung_n/
-│   │   ├── lung_scc/
-│   │   ├── unknown/            # Legacy/manual-review data; never a training class
-│   │   └── uploads/
-│   ├── mri/
-│   │   ├── lung_cancer_MRI_dataset/
-│   │   └── uploads/
-│   ├── lung_cancer.csv
-│   ├── lung_cancer_prediction.csv
-│   ├── processed.csv
-│   ├── X_test.pkl
-│   ├── X_train.pkl
-│   ├── y_test.pkl
-│   └── y_train.pkl
+│   └── train_mri_improved.py
 ├── frontend/
 │   ├── .env.example
-│   ├── .env.local
 │   ├── index.html
 │   ├── package.json
 │   ├── package-lock.json
@@ -155,6 +142,7 @@ Early Cancer Detection/
 │       │   ├── Histo.jsx
 │       │   ├── MRI.jsx
 │       │   ├── Pages.jsx
+│       │   ├── Providers.jsx
 │       │   ├── Risk.jsx
 │       │   └── ui.jsx
 │       ├── services/
@@ -163,10 +151,6 @@ Early Cancer Detection/
 │       │   └── supabase.js
 │       └── styles/
 │           └── app.css
-├── Kaggle_Output/
-│   └── lung-cancer-prediction.log
-├── models/                       # Local trained checkpoints and metadata
-├── plots/                        # Local evaluation plots
 └── supabase/
     ├── schema.sql
     └── seed_mumbai_mmr.sql
@@ -183,7 +167,8 @@ Early Cancer Detection/
 - `Backend/mri_predict.py`: loads the ConvMixer MRI checkpoint and returns binary MRI class scores.
 - `Backend/ct_predict.py`: loads the ResNet18 CT checkpoint and returns benign/malignant/normal class scores.
 - `Backend/modality_validation.py`: flags obvious cross-modality uploads as unknown before classification.
-- `Backend/preprocess.py`, `train.py`, `train_image_model.py`, `train_mri_convmixer.py`, `train_ct_resnet18.py`: preprocessing and model training/evaluation pipelines.
+- `Backend/preprocess.py`, `train.py`, `train_image_model.py`, `train_convmixer.py`, `train_mri_improved.py`, `train_histopathology_improved.py`, and `train_ct_improved.py`: preprocessing and model training/evaluation pipelines.
+- `Backend/evaluate_ct_checkpoint.py`: evaluates an existing CT checkpoint without training or overwriting it.
 - `frontend/src/App.jsx`: navigation, Supabase session handling, saved history, and analysis gating.
 - `frontend/src/services/api.js`: browser-to-FastAPI requests.
 - `frontend/src/services/supabase.js`, `persistence.js`: Supabase client and user-scoped persistence.

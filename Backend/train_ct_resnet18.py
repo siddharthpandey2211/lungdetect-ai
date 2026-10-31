@@ -45,6 +45,7 @@ DATA_ROOT = (
     / "ct_Scan"
     / "extracted"
     / "The IQ-OTHNCCD lung cancer dataset"
+    / "The IQ-OTHNCCD lung cancer dataset"
 )
 
 MODEL_ROOT = PROJECT_ROOT / "models"

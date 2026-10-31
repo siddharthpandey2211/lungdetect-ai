@@ -7,10 +7,11 @@ import io
 import json
 import logging
 import os
+import uuid
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
 from openai import (
     APIConnectionError,
@@ -20,8 +21,9 @@ from openai import (
     RateLimitError,
 )
 from pydantic import BaseModel, Field
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 import uvicorn
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 EDUCATIONAL_REMINDER = (
@@ -31,16 +33,58 @@ EDUCATIONAL_REMINDER = (
 
 try:
     from .predict import predict_lung_cancer
+    from .dataset_predict import predict_dataset_record
     from .image_predict import predict_histopathology
     from .mri_predict import predict_mri
     from .ct_predict import predict_ct
+    from .providers import find_providers
 except ImportError:
     from predict import predict_lung_cancer
+    from dataset_predict import predict_dataset_record
     from image_predict import predict_histopathology
     from mri_predict import predict_mri
     from ct_predict import predict_ct
+    from providers import find_providers
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_ROOT / "Backend" / ".env")
+
+MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024
+ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+async def save_image_upload(file: UploadFile, modality: str) -> Path:
+    extension = Path(file.filename or "").suffix.lower()
+    if extension not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported image format. Upload JPG, JPEG, PNG, or WEBP.",
+        )
+
+    contents = await file.read(MAX_IMAGE_UPLOAD_BYTES + 1)
+    if not contents:
+        raise HTTPException(status_code=400, detail="Uploaded image is empty.")
+    if len(contents) > MAX_IMAGE_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="Image size exceeds the 10 MB limit.",
+        )
+
+    try:
+        with Image.open(io.BytesIO(contents)) as image:
+            image.verify()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as error:
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file is not a valid image.",
+        ) from error
+
+    upload_dir = PROJECT_ROOT / "Data" / modality / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    file_path = upload_dir / f"{uuid.uuid4().hex}{extension}"
+    file_path.write_bytes(contents)
+    return file_path
+
 
 # ==========================================================
 # Create FastAPI App with CORS
@@ -85,6 +129,35 @@ class Patient(BaseModel):
     chest_pain: int = 1
 
 
+class DatasetPatient(BaseModel):
+    country: str | None = None
+    age: float | None = Field(default=None, ge=0, le=130)
+    gender: str | None = None
+    smoking_status: str | None = None
+    second_hand_smoke: str | None = None
+    air_pollution_exposure: str | None = None
+    occupation_exposure: str | None = None
+    rural_or_urban: str | None = None
+    socioeconomic_status: str | None = None
+    healthcare_access: str | None = None
+    insurance_coverage: str | None = None
+    screening_availability: str | None = None
+    stage_at_diagnosis: str | None = None
+    cancer_type: str | None = None
+    mutation_type: str | None = None
+    treatment_access: str | None = None
+    clinical_trial_access: str | None = None
+    language_barrier: str | None = None
+    mortality_risk: float | None = Field(default=None, ge=0, le=1)
+    five_year_survival_probability: float | None = Field(
+        default=None, ge=0, le=1
+    )
+    delay_in_diagnosis: str | None = None
+    family_history: str | None = None
+    indoor_smoke_exposure: str | None = None
+    tobacco_marketing_exposure: str | None = None
+
+
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=2000)
@@ -110,6 +183,14 @@ def home():
         "status": "Running",
         "version": "1.0.0"
     }
+
+
+@app.get("/api/providers")
+def providers(
+    pin: str = Query(..., min_length=6, max_length=6),
+    radius_km: float = Query(25, gt=0, le=100),
+):
+    return find_providers(pin, radius_km)
 
 
 # ==========================================================
@@ -151,6 +232,16 @@ def predict(patient: Patient):
             status_code=500,
             detail=str(e)
         )
+
+
+@app.post("/predict-dataset")
+def predict_dataset(patient: DatasetPatient):
+    try:
+        result = predict_dataset_record(patient.model_dump())
+        return {"success": True, "prediction": result}
+    except Exception as e:
+        logger.exception("Dataset prediction failed")
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/assistant/chat")
@@ -418,19 +509,10 @@ async def predict_image(file: UploadFile = File(...)):
         )
 
     try:
-        image_bytes = await file.read()
-
-        if not image_bytes:
-            raise HTTPException(
-                status_code=400,
-                detail="Uploaded image is empty."
-            )
-
-        image = Image.open(io.BytesIO(image_bytes))
-        result = predict_histopathology(
-            image,
-            file.filename
-        )
+        file_path = await save_image_upload(file, "histopathology")
+        with Image.open(file_path) as source_image:
+            image = source_image.convert("RGB")
+        result = predict_histopathology(image, file.filename, file_path)
         result["Filename"] = file.filename
 
         return result
@@ -447,30 +529,7 @@ async def predict_image(file: UploadFile = File(...)):
 
 @app.post("/predict-mri")
 async def predict_mri_endpoint(file: UploadFile = File(...)):
-    allowed_extensions = {
-        ".jpg",
-        ".jpeg",
-        ".png",
-        ".webp"
-    }
-
-    extension = Path(file.filename).suffix.lower()
-
-    if extension not in allowed_extensions:
-        raise HTTPException(
-            status_code=400,
-            detail="Unsupported image format."
-        )
-
-    upload_dir = PROJECT_ROOT / "Data" / "mri" / "uploads"
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-    file_path = upload_dir / file.filename
-
-    contents = await file.read()
-
-    with open(file_path, "wb") as buffer:
-        buffer.write(contents)
+    file_path = await save_image_upload(file, "mri")
 
     try:
         result = predict_mri(file_path)
@@ -489,39 +548,7 @@ async def predict_mri_endpoint(file: UploadFile = File(...)):
 
 @app.post("/predict-ct")
 async def predict_ct_endpoint(file: UploadFile = File(...)):
-    allowed_extensions = {
-        ".jpg",
-        ".jpeg",
-        ".png",
-        ".webp"
-    }
-
-    extension = Path(file.filename).suffix.lower()
-
-    if extension not in allowed_extensions:
-        raise HTTPException(
-            status_code=400,
-            detail="Unsupported image format."
-        )
-
-    upload_dir = (
-        PROJECT_ROOT
-        / "Data"
-        / "ct_Scan"
-        / "uploads"
-    )
-
-    upload_dir.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-    file_path = upload_dir / file.filename
-
-    contents = await file.read()
-
-    with open(file_path, "wb") as buffer:
-        buffer.write(contents)
+    file_path = await save_image_upload(file, "ct_scan")
 
     try:
         result = predict_ct(file_path)

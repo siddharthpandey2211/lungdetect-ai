@@ -8,19 +8,11 @@ frontend/dist/
 .env
 .env.*
 !frontend/.env.example
+!Backend/.env.example
 frontend/.env.local
 
-# Source-only public release: obtain these artifacts under their own licenses.
+# Local datasets, uploaded images, and trained artifacts are not part of the source release.
 /lung_cancer.csv
-/Data/lung_cancer.csv
-/Data/processed.csv
-/Data/X_train.pkl
-/Data/X_test.pkl
-/Data/y_train.pkl
-/Data/y_test.pkl
-/Data/histopathology/
-/models/*.pkl
-/models/*.pth
-/models/*.pt
-/models/*.csv
+/Data/
+/models/
 /plots/

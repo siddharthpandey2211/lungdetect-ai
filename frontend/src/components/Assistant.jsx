@@ -63,7 +63,7 @@ export default function Assistant({ assessment, patient, contextType = "risk", a
         : JSON.stringify(result.reply ?? "The assistant returned an empty response.");
       setMessages((current) => [...current, { role: "assistant", content: reply }]);
       try {
-        await saveChatExchange(analysisId, content, reply);
+        await saveChatExchange(analysisId, content, reply, contextType);
       } catch (saveError) {
         setError(`Reply received, but chat history could not be saved: ${saveError.message}`);
       }

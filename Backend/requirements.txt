@@ -13,6 +13,8 @@ catboost
 shap
 optuna
 python-multipart
+requests
+python-dotenv
 openai>=1.30,<2
 torch
 torchvision

@@ -5,15 +5,16 @@ import Risk from "./components/Risk";
 import Histo from "./components/Histo";
 import MRI from "./components/MRI";
 import CT from "./components/CT";
+import Providers from "./components/Providers";
 import { Dashboard, History, About } from "./components/Pages";
 import { deleteMyData, loadAnalyses, saveAnalysis } from "./services/persistence";
 import { supabase, supabaseConfigured } from "./services/supabase";
 
-const NAV = [["dash", "Dashboard", "home"], ["risk", "Risk Assessment", "activity"], ["histo", "Histopathology", "image"], ["mri", "MRI Analysis", "scan"], ["ct", "CT Analysis", "scan"], ["history", "History", "clock"], ["about", "About", "info"]];
+const NAV = [["dash", "Dashboard", "home"], ["risk", "Risk Assessment", "activity"], ["care", "Find Lung Cancer Care", "plus"], ["histo", "Histopathology", "image"], ["mri", "MRI Analysis", "scan"], ["ct", "CT Analysis", "scan"], ["history", "History", "clock"], ["about", "About", "info"]];
 
 function describeHistoryError(error) {
   const message = String(error?.message || "");
-  if (error?.code === "PGRST205" || message.includes("public.analyses") && message.includes("schema cache")) {
+  if (error?.code === "PGRST205" || message.includes("schema cache")) {
     return "Supabase tables are missing or not refreshed. In Supabase SQL Editor, run the project's supabase/schema.sql file, then refresh this page.";
   }
   return `Could not load saved history: ${message}`;
@@ -119,7 +120,7 @@ export default function App() {
   };
 
   const reset = async () => {
-    if (!user || !confirm("Delete your Supabase analyses, chat messages, and pathology images? The backend's separate local review archive is not affected.")) return;
+    if (!user || !confirm("Delete your Supabase analyses, chat messages, and uploaded images/scans? The backend's separate local review archive is not affected.")) return;
     setAppError("");
     try {
       await deleteMyData();
@@ -146,6 +147,7 @@ export default function App() {
         {historyLoading && <p className="tiny muted">Loading your saved history...</p>}
         {page === "dash" && <Dashboard history={history} go={go} />}
         {page === "risk" && <><h1>Risk Assessment</h1><Risk guard={guard} onDone={addHistory} /></>}
+        {page === "care" && <><h1>Find Lung Cancer Care</h1><Providers standalone /></>}
         {page === "histo" && <><h1>Histopathology Analysis</h1><Histo guard={guard} onDone={addHistory} /></>}
         {page === "mri" && <><h1>MRI Analysis</h1><MRI guard={guard} onDone={addHistory} /></>}
         {page === "ct" && <><h1>CT Analysis</h1><CT guard={guard} onDone={addHistory} /></>}

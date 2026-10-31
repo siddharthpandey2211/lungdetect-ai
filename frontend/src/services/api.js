@@ -51,3 +51,18 @@ export const predictImage = (file) => { const fd = new FormData(); fd.append("fi
 export const predictMRI = (file) => { const fd = new FormData(); fd.append("file", file); return post("/predict-mri", fd, true).then((data) => data.result || data); };
 export const predictCT = (file) => { const fd = new FormData(); fd.append("file", file); return post("/predict-ct", fd, true).then((data) => data.result || data); };
 export const chatWithAssistant = (payload) => post("/assistant/chat", payload);
+export const findProviders = async ({ pin, radiusKm }) => {
+  const params = new URLSearchParams({
+    pin,
+    radius_km: String(radiusKm),
+  });
+  let response;
+  try {
+    response = await fetch(`${BASE}/api/providers?${params.toString()}`);
+  } catch {
+    throw new Error("Unable to connect to the provider directory.");
+  }
+  const data = await response.json();
+  if (!response.ok) throw new Error(errorMessage(data.detail) || "Provider search failed.");
+  return data;
+};

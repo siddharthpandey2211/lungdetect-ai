@@ -1,322 +1,130 @@
-# ==========================================================
-# LungDetect AI
-# File: train.py
-# ==========================================================
 
 import os
-from pathlib import Path
-
-os.environ.setdefault("MPLBACKEND", "Agg")
-os.environ.setdefault("MPLCONFIGDIR", os.path.join(os.getcwd(), ".mplconfig"))
-os.makedirs(os.environ["MPLCONFIGDIR"], exist_ok=True)
-
 import joblib
-import warnings
-import numpy as np
 import pandas as pd
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import GaussianNB
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
-from sklearn.metrics import (
-    accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
-    roc_auc_score,
-    confusion_matrix,
-    classification_report,
-    roc_curve,
-)
 
-from sklearn.model_selection import cross_val_score
+# --------------------------------------------------
+# 1. Paths and configuration
+# --------------------------------------------------
+DATA_PATH = os.path.join("Data", "lung_cancer.csv")
+MODEL_DIR = "models"
 
-warnings.filterwarnings("ignore")
+MODEL_PATH = os.path.join(MODEL_DIR, "gaussian_nb.pkl")
+METADATA_PATH = os.path.join(MODEL_DIR, "gaussian_nb_metadata.pkl")
 
-# ==========================================================
-# Create folders
-# ==========================================================
+os.makedirs(MODEL_DIR, exist_ok=True)
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "Data"
-MODELS_DIR = BASE_DIR / "models"
-PLOTS_DIR = BASE_DIR / "plots"
 
-DATA_DIR.mkdir(exist_ok=True)
-MODELS_DIR.mkdir(exist_ok=True)
-PLOTS_DIR.mkdir(exist_ok=True)
+# --------------------------------------------------
+# 2. Load and clean the ORIGINAL dataset
+# --------------------------------------------------
+df = pd.read_csv(DATA_PATH)
 
-# ==========================================================
-# Load processed data
-# ==========================================================
+# Remove accidental spaces in column names
+df.columns = df.columns.str.strip()
 
-print("=" * 50)
-print("Loading Processed Dataset")
-print("=" * 50)
+target = "LUNG_CANCER"
 
-X_train = joblib.load(DATA_DIR / "X_train.pkl")
-X_test = joblib.load(DATA_DIR / "X_test.pkl")
-y_train = joblib.load(DATA_DIR / "y_train.pkl")
-y_test = joblib.load(DATA_DIR / "y_test.pkl")
-
-print("Dataset Loaded Successfully.\n")
-
-# ==========================================================
-# Models
-# ==========================================================
-
-models = {
-    "Gaussian Naive Bayes": GaussianNB(),
-    "Decision Tree": DecisionTreeClassifier(
-        max_depth=8,
-        min_samples_leaf=50,
-        random_state=42
-    ),
-}
-
-model_files = {
-    "Gaussian Naive Bayes": MODELS_DIR / "gaussian_nb.pkl",
-    "Decision Tree": MODELS_DIR / "decision_tree.pkl",
-}
-
-# ==========================================================
-# Training
-# ==========================================================
-
-results = []
-
-best_model = None
-best_name = ""
-best_score = (-1, -1)
-best_accuracy = 0
-
-print("=" * 50)
-print("Training Models")
-print("=" * 50)
-
-max_train_samples = 100000
-
-if len(X_train) > max_train_samples:
-    rng = np.random.RandomState(42)
-    train_indices = rng.choice(len(X_train), size=max_train_samples, replace=False)
-    X_train_fit = X_train[train_indices]
-    y_train_fit = y_train.iloc[train_indices] if hasattr(y_train, "iloc") else y_train[train_indices]
-    print(f"Training on a sample of {max_train_samples} rows to keep runtime manageable.")
-else:
-    X_train_fit = X_train
-    y_train_fit = y_train
-
-for name, model in models.items():
-
-    print(f"\nTraining {name}...")
-
-    model.fit(X_train_fit, y_train_fit)
-    joblib.dump(model, model_files[name])
-
-    prediction = model.predict(X_test)
-
-    probability = model.predict_proba(X_test)[:, 1]
-
-    accuracy = accuracy_score(y_test, prediction)
-
-    precision = precision_score(y_test, prediction, zero_division=0)
-
-    recall = recall_score(y_test, prediction, zero_division=0)
-
-    f1 = f1_score(y_test, prediction, zero_division=0)
-
-    auc = roc_auc_score(y_test, probability)
-
-    cv_X = X_train_fit
-    cv_y = y_train_fit
-    cv_splits = 3
-
-    if len(X_train_fit) > 10000:
-        cv_X = X_train_fit[:10000]
-        cv_y = y_train_fit[:10000]
-        cv_splits = 2
-
-    cv = cross_val_score(
-        model,
-        cv_X,
-        cv_y,
-        cv=cv_splits,
-        scoring="accuracy",
-        n_jobs=1
-    ).mean()
-
-    results.append([
-        name,
-        accuracy,
-        precision,
-        recall,
-        f1,
-        auc,
-        cv
-    ])
-
-    print("Accuracy :", round(accuracy,4))
-    print("Precision:", round(precision,4))
-    print("Recall   :", round(recall,4))
-    print("F1 Score :", round(f1,4))
-    print("ROC AUC  :", round(auc,4))
-    print("CV Score :", round(cv,4))
-
-    # Save best model
-
-    selection_score = (f1, auc)
-
-    if selection_score > best_score:
-
-        best_accuracy = accuracy
-        best_model = model
-        best_name = name
-        best_score = selection_score
-
-# ==========================================================
-# Save best model
-# ==========================================================
-
-joblib.dump(best_model, MODELS_DIR / "best_model.pkl")
-joblib.dump({"name": best_name}, MODELS_DIR / "best_model_metadata.pkl")
-
-print("\n")
-print("=" * 50)
-print("Best Model")
-print("=" * 50)
-
-print(best_name)
-print("Accuracy:", round(best_accuracy,4))
-
-# ==========================================================
-# Comparison Table
-# ==========================================================
-
-columns = [
-
-    "Model",
-
-    "Accuracy",
-
-    "Precision",
-
-    "Recall",
-
-    "F1",
-
-    "ROC_AUC",
-
-    "CV"
-
-]
-
-result_df = pd.DataFrame(
-    results,
-    columns=columns
-)
-
-result_df = result_df.sort_values(
-    by=["F1", "ROC_AUC"],
-    ascending=False
-)
-
-print("\n")
-print(result_df)
-
-result_df.to_csv(
-    MODELS_DIR / "model_results.csv",
-    index=False
-)
-
-# ==========================================================
-# Confusion Matrix
-# ==========================================================
-
-prediction = best_model.predict(X_test)
-
-cm = confusion_matrix(
-    y_test,
-    prediction
-)
-
-plt.figure(figsize=(6,5))
-
-sns.heatmap(
-    cm,
-    annot=True,
-    cmap="Blues",
-    fmt="d"
-)
-
-plt.title(best_name + " Confusion Matrix")
-
-plt.xlabel("Predicted")
-
-plt.ylabel("Actual")
-
-plt.savefig(PLOTS_DIR / "confusion_matrix.png")
-
-plt.close()
-
-# ==========================================================
-# ROC Curve
-# ==========================================================
-
-probability = best_model.predict_proba(X_test)[:,1]
-
-fpr, tpr, _ = roc_curve(
-    y_test,
-    probability
-)
-
-plt.figure(figsize=(6,5))
-
-plt.plot(
-    fpr,
-    tpr,
-    label="ROC Curve"
-)
-
-plt.plot(
-    [0,1],
-    [0,1],
-    linestyle="--"
-)
-
-plt.xlabel("False Positive Rate")
-
-plt.ylabel("True Positive Rate")
-
-plt.title(best_name + " ROC Curve")
-
-plt.legend()
-
-plt.savefig(PLOTS_DIR / "roc_curve.png")
-
-plt.close()
-
-# ==========================================================
-# Classification Report
-# ==========================================================
-
-print("\n")
-print("=" * 50)
-print("Classification Report")
-print("=" * 50)
-
-print(
-    classification_report(
-        y_test,
-        prediction
+if target not in df.columns:
+    raise ValueError(
+        f"Target column '{target}' was not found. "
+        f"Available columns: {df.columns.tolist()}"
     )
+
+# Remove duplicate rows and rows with missing values
+df = df.drop_duplicates().dropna().reset_index(drop=True)
+
+# Normalize text values
+for col in df.select_dtypes(include="object").columns:
+    df[col] = df[col].astype(str).str.strip().str.upper()
+
+# Convert the target to binary labels
+target_mapping = {"NO": 0, "YES": 1}
+df[target] = df[target].map(target_mapping)
+
+if df[target].isna().any():
+    raise ValueError("Target must contain only YES and NO.")
+
+X = df.drop(columns=[target]).copy()
+y = df[target].astype(int)
+
+# Convert gender to a numeric feature
+if "GENDER" in X.columns:
+    X["GENDER"] = X["GENDER"].map({"F": 0, "M": 1})
+
+    if X["GENDER"].isna().any():
+        raise ValueError("GENDER must contain only F or M.")
+
+# Ensure all remaining input columns are numeric
+for col in X.columns:
+    X[col] = pd.to_numeric(X[col], errors="raise")
+
+# Record valid input rules from the training data
+metadata = {
+    "features": X.columns.tolist(),
+    "target_mapping": target_mapping,
+    "gender_mapping": {"F": 0, "M": 1},
+    "min_values": X.min().to_dict(),
+    "max_values": X.max().to_dict(),
+    # Exact observed values for categorical/binary features
+    "allowed_values": {
+        col: sorted(X[col].unique().tolist())
+        for col in X.columns
+        if col != "AGE"
+    },
+}
+
+# --------------------------------------------------
+# 3. Split data for evaluation
+# --------------------------------------------------
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.20,
+    random_state=42,
+    stratify=y
 )
 
-print("\n")
-print("=" * 50)
-print("Training Completed Successfully")
-print("=" * 50)
+# --------------------------------------------------
+# 4. Train Gaussian Naive Bayes
+# --------------------------------------------------
+model = GaussianNB()
+model.fit(X_train, y_train)
+
+# --------------------------------------------------
+# 5. Evaluate on held-out test data
+# --------------------------------------------------
+y_pred = model.predict(X_test)
+
+print("\n===== GAUSSIAN NAIVE BAYES RESULTS =====")
+print(f"Training rows: {len(X_train)}")
+print(f"Testing rows:  {len(X_test)}")
+print(f"Accuracy:      {accuracy_score(y_test, y_pred):.4f}")
+print("\nConfusion Matrix:")
+print(confusion_matrix(y_test, y_pred))
+print("\nClassification Report:")
+print(classification_report(
+    y_test,
+    y_pred,
+    labels=[0, 1],
+    target_names=["NO (0)", "YES (1)"],
+    zero_division=0
+))
+
+# --------------------------------------------------
+# 6. Refit on all cleaned data for deployment
+# --------------------------------------------------
+final_model = GaussianNB()
+final_model.fit(X, y)
+
+joblib.dump(final_model, MODEL_PATH)
+joblib.dump(metadata, METADATA_PATH)
+
+print("\nModel saved to:", MODEL_PATH)
+print("Validation rules saved to:", METADATA_PATH)
+print("Training complete.")

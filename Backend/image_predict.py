@@ -24,15 +24,11 @@ MODEL_PATH = os.path.join(
     "lung_resnet18.pth"
 )
 
-SAVE_DIR = os.path.join(
+UPLOAD_DIR = os.path.join(
     BASE_DIR,
     "Data",
-    "histopathology"
-)
-
-UNKNOWN_DIR = os.path.join(
-    SAVE_DIR,
-    "unknown"
+    "histopathology",
+    "uploads",
 )
 
 
@@ -53,19 +49,8 @@ CLASS_NAMES = [
 # Minimum confidence required to automatically assign
 # an uploaded image to one of the trained classes.
 CONFIDENCE_THRESHOLD = float(
-    os.getenv("HISTOPATHOLOGY_CONFIDENCE_THRESHOLD", "70")
+    os.getenv("HISTOPATHOLOGY_CONFIDENCE_THRESHOLD", "60")
 )
-
-
-# Create unknown folder if it doesn't exist
-os.makedirs(UNKNOWN_DIR, exist_ok=True)
-
-# Make sure class folders exist
-for class_name in CLASS_NAMES:
-    os.makedirs(
-        os.path.join(SAVE_DIR, class_name),
-        exist_ok=True
-    )
 
 
 # ============================================================
@@ -122,7 +107,7 @@ def load_image_model():
     model.to(DEVICE)
     model.eval()
 
-    print("✓ Histopathology CNN loaded successfully")
+    print("Histopathology CNN loaded successfully")
 
     return model
 
@@ -134,29 +119,11 @@ image_model = load_image_model()
 # SAVE IMAGE
 # ============================================================
 
-def save_uploaded_image(image, original_filename, folder):
-
-    # Generate unique filename
-    unique_id = uuid.uuid4().hex
-
-    # Always save as JPG
-    filename = f"{unique_id}.jpg"
-
-    save_path = os.path.join(
-        folder,
-        filename
-    )
-
-    # Convert to RGB
-    image = image.convert("RGB")
-
-    # Save image
-    image.save(
-        save_path,
-        format="JPEG",
-        quality=95
-    )
-
+def save_uploaded_image(image):
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}.jpg"
+    save_path = os.path.join(UPLOAD_DIR, filename)
+    image.convert("RGB").save(save_path, format="JPEG", quality=95)
     return save_path, filename
 
 
@@ -166,7 +133,8 @@ def save_uploaded_image(image, original_filename, folder):
 
 def predict_histopathology(
     image,
-    original_filename=None
+    original_filename=None,
+    saved_upload_path=None,
 ):
 
     try:
@@ -176,6 +144,11 @@ def predict_histopathology(
         # ----------------------------------------------------
 
         image = image.convert("RGB")
+        if saved_upload_path is None:
+            _, saved_filename = save_uploaded_image(image)
+        else:
+            saved_filename = os.path.basename(saved_upload_path)
+
         modality_check = check_image_modality(image, "histopathology")
 
         if not modality_check["valid"]:
@@ -188,8 +161,12 @@ def predict_histopathology(
                 "Threshold (%)": CONFIDENCE_THRESHOLD,
                 "Class Probabilities (%)": {class_name: 0.0 for class_name in CLASS_NAMES},
                 "Definition": "This image does not match the expected histopathology appearance and needs manual verification.",
-                "Storage Class": "unknown",
-                "Storage Status": "Image does not match the expected histopathology modality.",
+                "Storage Class": "uploads",
+                "Saved Filename": saved_filename,
+                "Storage Status": (
+                    "Image retained in uploads; it does not match the expected "
+                    "histopathology modality."
+                ),
                 "Unknown Reason": modality_check["reason"],
                 "Manual Verification Required": True,
                 "Device": str(DEVICE),
@@ -257,28 +234,16 @@ def predict_histopathology(
 
         if confidence >= CONFIDENCE_THRESHOLD:
             final_class = predicted_class
-            save_folder = os.path.join(SAVE_DIR, final_class)
-            storage_status = f"Image classified as {final_class}"
+            storage_status = (
+                "Image retained in uploads; prediction does not change its "
+                "training-data location."
+            )
         else:
             final_class = "unknown"
-            save_folder = UNKNOWN_DIR
             storage_status = (
-                "Image sent to unknown because model confidence is below "
-                f"the {CONFIDENCE_THRESHOLD}% threshold."
+                f"Image retained in uploads; confidence is below the "
+                f"{CONFIDENCE_THRESHOLD}% threshold and needs manual review."
             )
-
-
-        # ----------------------------------------------------
-        # Save image
-        # ----------------------------------------------------
-
-        saved_path, saved_filename = (
-            save_uploaded_image(
-                image,
-                original_filename,
-                save_folder
-            )
-        )
 
 
         # ----------------------------------------------------
@@ -345,7 +310,7 @@ def predict_histopathology(
                 class_probabilities,
 
             "Storage Class":
-                final_class,
+                "uploads",
 
             "Saved Filename":
                 saved_filename,

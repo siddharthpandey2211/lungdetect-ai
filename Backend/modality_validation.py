@@ -5,7 +5,9 @@ import numpy as np
 COLORFULNESS_THRESHOLD = 8.0
 HISTOPATHOLOGY_COLORFULNESS_THRESHOLD = 12.0
 HISTOPATHOLOGY_SATURATION_RATIO = 0.25
-HISTOPATHOLOGY_TEXTURE_THRESHOLD = 8.0
+# Histology tissue can be smooth after resizing, so texture is only a
+# secondary guard; color and saturation reject grayscale CT/MRI images.
+HISTOPATHOLOGY_TEXTURE_THRESHOLD = 0.75
 SCAN_BACKGROUND_THRESHOLD = 20
 
 
